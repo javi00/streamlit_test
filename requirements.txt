@@ -2,3 +2,4 @@ streamlit
 sounddevice
 numpy
 matplotlib
+streamlit-webrtc
