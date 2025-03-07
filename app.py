@@ -1,69 +1,54 @@
 import streamlit as st
+from streamlit_webrtc import webrtc_streamer
 import numpy as np
-import sounddevice as sd
 import matplotlib.pyplot as plt
-import time
+import av
 
-# Set Streamlit page config (no wide layout)
-st.set_page_config(page_title="Real-Time Audio Visualizer")
+# Title
+st.title("🎙️ Real-Time Audio Capture in Streamlit Cloud")
 
-# Sidebar for settings (optional for future adjustments)
-st.sidebar.title("Audio Settings")
-st.sidebar.write("Future options can be added here.")
-
-# Audio capture settings
-SAMPLE_RATE = 16000  # Sample rate in Hz
-DURATION = 0.5  # Time window in seconds
-BUFFER_SIZE = int(SAMPLE_RATE * DURATION)  # Number of samples in the buffer
-audio_buffer = np.zeros(BUFFER_SIZE)  # Circular buffer for audio storage
+# WebRTC microphone streamer
+webrtc_ctx = webrtc_streamer(key="mic", audio=True, video=False)
 
 # Create placeholders for plots
-col1, col2 = st.columns(2)  # Use two columns for a compact layout
+col1, col2 = st.columns(2)  # Use two columns for layout
 waveform_plot = col1.empty()
 energy_plot = col2.empty()
 
-# Function to capture audio
-def audio_callback(indata, frames, time, status):
-    """Callback function to store real-time audio in a buffer."""
-    global audio_buffer
-    if status:
-        print(status)
-    audio_buffer = np.roll(audio_buffer, -frames)  # Shift old samples
-    audio_buffer[-frames:] = indata[:, 0]  # Insert new samples
+# Function to process audio frames
+def process_audio_frame(audio_frame: av.AudioFrame):
+    """Extracts raw audio data from the WebRTC audio stream."""
+    audio_data = np.array(audio_frame.to_ndarray())  # Convert audio to NumPy array
+    return audio_data
 
-# Start real-time audio stream
-stream = sd.InputStream(
-    samplerate=SAMPLE_RATE,
-    channels=1,
-    callback=audio_callback,
-    blocksize=int(SAMPLE_RATE * 0.1)  # Update every 100ms
-)
-stream.start()
+# Live audio processing loop
+if webrtc_ctx.audio_receiver:
+    while True:
+        # Get the latest audio frame
+        audio_frames = webrtc_ctx.audio_receiver.get_frames(timeout=1)
+        if not audio_frames:
+            continue
 
-# **Real-Time Loop**
-while True:
-    # Copy latest buffer data
-    data = np.copy(audio_buffer)
+        # Process the audio frame
+        audio_data = process_audio_frame(audio_frames[0])
 
-    # Compute energy
-    energy = np.sum(data ** 2) / len(data)
+        # Compute energy
+        energy = np.sum(audio_data ** 2) / len(audio_data)
 
-    # Plot waveform with a compact size
-    fig_wave, ax_wave = plt.subplots(figsize=(6, 3))  # Smaller width & height
-    ax_wave.plot(data, color='blue')
-    ax_wave.set_title("Audio Waveform (Live)")
-    ax_wave.set_xlabel("Samples")
-    ax_wave.set_ylabel("Amplitude")
-    waveform_plot.pyplot(fig_wave)  # Update waveform plot
-    plt.close(fig_wave)  # Prevent memory leak
+        # Plot waveform
+        fig_wave, ax_wave = plt.subplots(figsize=(6, 3))
+        ax_wave.plot(audio_data, color='blue')
+        ax_wave.set_title("Audio Waveform (Live)")
+        ax_wave.set_xlabel("Samples")
+        ax_wave.set_ylabel("Amplitude")
+        waveform_plot.pyplot(fig_wave)
+        plt.close(fig_wave)  # Prevent memory leaks
 
-    # Plot energy with a compact size
-    fig_energy, ax_energy = plt.subplots(figsize=(6, 3))  # Smaller bar chart
-    ax_energy.bar(["Energy"], [energy], color='red')
-    ax_energy.set_ylim(0, 0.1)  # Set y-limit for better visualization
-    ax_energy.set_title("Signal Energy")
-    energy_plot.pyplot(fig_energy)  # Update energy plot
-    plt.close(fig_energy)  # Prevent memory leak
+        # Plot energy
+        fig_energy, ax_energy = plt.subplots(figsize=(4, 3))
+        ax_energy.bar(["Energy"], [energy], color='red')
+        ax_energy.set_ylim(0, max(energy * 1.2, 0.1))  # Auto-scale y-axis
+        ax_energy.set_title("Signal Energy")
+        energy_plot.pyplot(fig_energy)
+        plt.close(fig_energy)  # Prevent memory leaks
 
-    # Control refresh rate
-    time.sleep(0.1)  # Update every 100ms
