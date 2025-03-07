@@ -8,7 +8,10 @@ import av
 st.title("🎙️ Real-Time Audio Capture in Streamlit Cloud")
 
 # WebRTC microphone streamer
-webrtc_ctx = webrtc_streamer(key="mic", audio=True, video=False)
+webrtc_ctx = webrtc_streamer(
+    key="mic",
+    media_stream_constraints={"audio": True, "video": False}  # Activar solo el audio
+)
 
 # Create placeholders for plots
 col1, col2 = st.columns(2)  # Use two columns for layout
